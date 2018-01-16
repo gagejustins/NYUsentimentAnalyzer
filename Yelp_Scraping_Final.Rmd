@@ -1,0 +1,147 @@
+
+```{r}
+library(rvest)
+library(tm)
+library(wordcloud)
+library(ggplot2)
+```
+
+Define a function to create a list of links for a given url to scrape reviews.
+
+```{r}
+get_yelp_links <- function(max_pages, url) {
+  
+  links <- c()
+  starts <- seq(0, 20*as.numeric(max_pages),20)
+  
+  for (i in seq(1,length(starts),1)) {
+    index <- starts[i]
+    full <- paste(url, as.character(index), sep="")
+    links[i] <- full
+  }
+  
+  return(links)
+  
+}
+```
+
+Call function for NYU and Columbia links.
+
+```{r}
+nyu.links <- get_yelp_links(4, "https://www.yelp.com/biz/new-york-university-new-york-18?start=")
+columbia.links <- get_yelp_links(4, "https://www.yelp.com/biz/columbia-university-new-york-43?start=")
+```
+
+Define function to scrape reviews.
+
+```{r}
+scrape_yelp_reviews <- function(links_list) {
+  
+  reviews_list <- c()
+  
+  for (i in seq(1,length(links_list),1)) {
+    
+    link <- links_list[i]
+    reviews <- read_html(link)
+    reviews <- html_nodes(reviews, ".review-content p")
+    reviews <- html_text(reviews)
+    
+    reviews_list <- append(reviews_list, reviews)
+    
+  }
+  
+  return(reviews_list)
+  
+}
+```
+
+```{r}
+nyu.reviews <- scrape_yelp_reviews(nyu.links)
+columbia.reviews <- scrape_yelp_reviews(columbia.links)
+```
+
+Function to make into a corpus and clean up.
+
+```{r}
+to_corpus <- function(list) {
+  
+  corp <- VCorpus(VectorSource(list))
+  
+  corp.clean <- tm_map(corp, removePunctuation)
+  corp.clean <- tm_map(corp.clean, content_transformer(tolower))
+  corp.clean <- tm_map(corp.clean, removeWords, stopwords("english"))
+  corp.clean <- tm_map(corp.clean, removeWords, c("nyu", "columbia"))
+  corp.clean <- tm_map(corp.clean, stripWhitespace)
+  
+  return(corp.clean)
+  
+}
+```
+
+```{r}
+nyu.corpus <- to_corpus(nyu.reviews)
+columbia.corpus <- to_corpus(columbia.reviews)
+```
+
+Wordclouds.
+
+NYU.
+
+```{r}
+wordcloud(nyu.corpus, scale=c(3.5, .35), max.words=50, random.order = F, colors = brewer.pal(10, "Purples"))
+```
+
+Columbia.
+
+```{r}
+wordcloud(columbia.corpus, scale=c(3.5, .35), max.words=50, random.order = F, colors = brewer.pal(6, "Blues"))
+```
+
+Sentiment Analysis.
+
+```{r}
+library(syuzhet)
+```
+
+```{r}
+nyu.sentiment <- get_nrc_sentiment(nyu.reviews)
+columbia.sentiment <- get_nrc_sentiment(columbia.reviews)
+```
+
+```{r}
+nyu.review.sentiment.sums <- data.frame(sentiment = colnames(nyu.sentiment), freq = colSums(nyu.sentiment))
+columbia.review.sentiment.sums <- data.frame(sentiment = colnames(columbia.sentiment), freq = colSums(columbia.sentiment))
+
+#Combine them in a dataframe for comparison
+review.comparison.df <- rbind(nyu.review.sentiment.sums, columbia.review.sentiment.sums)
+nyu <- rep("nyu",10)
+columbia <- rep("columbia",10)
+schools <- c(nyu, columbia)
+review.comparison.df$school <- schools
+```
+
+```{r}
+plot <- ggplot(review.comparison.df, aes(x=sentiment, y=freq, fill=school)) + geom_bar(stat="identity", position=position_dodge()) + scale_fill_manual(values = c("#4F628E", "#9775AA")) + ggtitle("Review Sentiment Totals") + labs(x="Sentiment",y="Count") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

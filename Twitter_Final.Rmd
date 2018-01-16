@@ -1,0 +1,136 @@
+
+https://www.yelp.com/biz/new-york-university-new-york-18
+
+https://www.yelp.com/biz/columbia-university-new-york-43
+
+Compare reviews to Twitter? Compare reviews of NYU vs. Columbia?
+
+A tool to compare internet sentiment for NYU to any other university, create a comparison dashboard: vs. stars, reviews per user, sentiment on Twitter, etc. Data sources are Twitter and Yelp.
+
+```{r}
+library(tm)
+library(twitteR)
+library(stringr)
+library(wordcloud)
+library(syuzhet)
+library(scales)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+Load initial Twitter authentification data.
+
+```{r}
+ #Load oauth keys
+  api_key <- 	"fo13zkANmt0Jtr6iLfekHARRG"
+  api_secret <- "	N1sLBOxbrvWKhocxQ88nMxuvz1ko1CsocfPLKFjMdfJFQjzCy2"
+  token <- "801953993429778432-e47lzP8UGiTqPCl7yalcjQiXu2Ws0gI"
+  token_secret <- "uLaIub69NFqqXuKYH6iC329W2q7hpVwSlcMQrQf9iEs2Z"
+```
+
+Create Twitter connection.
+
+```{r}
+setup_twitter_oauth(api_key, api_secret, token, token_secret)
+```
+
+First, for NYU.
+
+```{r}
+tweets.nyu <- searchTwitter("#nyu OR #NYU OR NYU OR nyu", n=100, lang="en")
+tweets.columbia <- searchTwitter("#columbia OR #Columbia OR columbia OR Columbia", n=100, lang="en")
+tweets.df.nyu <- twListToDF(tweets.nyu)
+tweets.df.columbia <- twListToDF(tweets.columbia)
+```
+
+Remove @users.
+
+```{r}
+nohandles.nyu <- str_replace_all(tweets.df.nyu$text, "@\\w+", "")
+nohandles.columbia <- str_replace_all(tweets.df.columbia, "@\\w+", "")
+```
+
+DF with most active users.
+
+```{r}
+tweets.df.nyu %>% group_by(screenName) %>% summarise(count = n()) %>% arrange(desc(count))
+```
+
+
+Create a corpus.
+
+```{r}
+wordCorpus <- VCorpus(VectorSource(nohandles.nyu))
+```
+
+Clean.
+
+```{r}
+wordCorpus <- tm_map(wordCorpus, removePunctuation)
+wordCorpus <- tm_map(wordCorpus, content_transformer(tolower))
+wordCorpus <- tm_map(wordCorpus, removeWords, stopwords("english"))
+wordCorpus <- tm_map(wordCorpus, removeWords, c("amp", "2yo", "3yo", "4yo", "nyu"))
+wordCorpus <- tm_map(wordCorpus, stripWhitespace)
+```
+
+Wordcloud.
+
+```{r}
+wordcloud(wordCorpus, scale=c(3.5, .35), max.words=50, random.order = F, colors = brewer.pal(6, "Dark2"))
+```
+
+Who's tweeting the most.
+
+```{r}
+handles <- str_extract_all(tweets.df.nyu$text, "@\\w+")
+```
+
+```{r}
+handlesCorpus <- VCorpus(VectorSource(handles))
+```
+
+```{r}
+wordcloud(handlesCorpus, scale=c(3,.3), max.words = 20, random.order = F, colors=brewer.pal(6, "Dark2"))
+```
+
+Sentiment analysis.
+
+Use R base function iconv to remove non-ASCII characters.
+
+```{r}
+nyu.sentiment <- get_nrc_sentiment(iconv(tweets.df.nyu$text, "latin1", "ASCII", sub=""))
+columbia.sentiment <- get_nrc_sentiment(iconv(tweets.df.columbia$text, "latin1", "ASCII", sub=""))
+```
+
+Add the sentiments to the NYU tweets dataframe.
+
+```{r}
+tweets.df.nyu <- cbind(tweets.df.nyu, nyu.sentiment)
+tweets.df.columbia <- cbind(tweets.df.columbia, columbia.sentiment)
+```
+
+Plot.
+
+```{r}
+nyu.sentiment.sums <- data.frame(sentiment = colnames(nyu.sentiment),freq = colSums(nyu.sentiment))
+
+columbia.sentiment.sums <- data.frame(sentiment = colnames(columbia.sentiment), freq = colSums(columbia.sentiment))
+```
+
+```{r}
+#Combine them in a dataframe for comparison
+review.comparison.df <- rbind(nyu.sentiment.sums, columbia.sentiment.sums)
+nyu <- rep("nyu",10)
+columbia <- rep("columbia",10)
+schools <- c(nyu, columbia)
+review.comparison.df$school <- schools
+```
+
+```{r}
+plot <- ggplot(review.comparison.df, aes(x=sentiment, y=freq, fill=school)) + geom_bar(stat="identity", position=position_dodge()) + scale_fill_manual(values = c("#4F628E", "#9775AA")) + ggtitle("Twitter Sentiment Totals") + labs(x="Sentiment",y="Count") 
+plot
+```
+
+
+
